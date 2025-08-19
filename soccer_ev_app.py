@@ -228,9 +228,6 @@ compute_only = st.button("Compute Only")
 compute_and_save = st.button("Compute & Save Match")
 
 
-compute_only = st.button("Compute Only")
-compute_and_save = st.button("Compute & Save Match")
-
 
 def compute_match(label: str,
                   home_xg_for_s: str, away_xga_s: str,
