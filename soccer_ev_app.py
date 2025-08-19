@@ -159,25 +159,60 @@ init_state()
 
 # ---------------- Inputs ----------------
 st.subheader("➕ Add / Compute a Match")
-colA, colB, colC = st.columns([1.5, 1.5, 1.2])
 
-with colA:
+# --- Helper to convert totals -> per match ---
+def per_match(total_str, games_str):
+    try:
+        total = float(str(total_str).strip())
+        games = float(str(games_str).strip())
+        if games <= 0:
+            return None
+        return total / games
+    except:
+        return None
+
+# ---- HOME TEAM INPUTS ----
+st.markdown("### Home Team Inputs")
+hcol1, hcol2, hcol3 = st.columns(3)
+with hcol1:
     home_team = st.text_input("Home Team", "Vélez Sarsfield")
-    home_xg_for = st.text_input("Home xG For (season or weighted)", "1.60")
-    home_xga_ag = st.text_input("Home xGA Against (season or weighted)", "1.20")
+with hcol2:
+    home_xg_total = st.text_input("Home xG (TOTAL)", "")
+    home_xga_total = st.text_input("Home xGA (TOTAL)", "")
+with hcol3:
+    home_games = st.text_input("Home Matches Played", "")
 
-with colB:
+# Calculate per-match (override old variables)
+home_xg_for = per_match(home_xg_total, home_games)
+home_xga_ag = per_match(home_xga_total, home_games)
+
+# ---- AWAY TEAM INPUTS ----
+st.markdown("### Away Team Inputs")
+acol1, acol2, acol3 = st.columns(3)
+with acol1:
     away_team = st.text_input("Away Team", "Fortaleza")
-    away_xg_for = st.text_input("Away xG For (season or weighted)", "1.40")
-    away_xga_ag = st.text_input("Away xGA Against (season or weighted)", "1.30")
+with acol2:
+    away_xg_total = st.text_input("Away xG (TOTAL)", "")
+    away_xga_total = st.text_input("Away xGA (TOTAL)", "")
+with acol3:
+    away_games = st.text_input("Away Matches Played", "")
 
-with colC:
-    st.write("**Odds (American or Decimal)**")
+away_xg_for = per_match(away_xg_total, away_games)
+away_xga_ag = per_match(away_xga_total, away_games)
+
+# ---- ODDS INPUTS ----
+st.markdown("### Odds (American or Decimal)")
+ocol1, ocol2, ocol3 = st.columns(3)
+with ocol1:
     odds_o15 = st.text_input("Over 1.5 Odds", "-190")
+with ocol2:
     odds_o25 = st.text_input("Over 2.5 Odds", "+160")
+with ocol3:
     odds_btts = st.text_input("BTTS Odds", "+135")
-    compute_only = st.button("Compute Only")
-    compute_and_save = st.button("Compute & Save Match")
+
+compute_only = st.button("Compute Only")
+compute_and_save = st.button("Compute & Save Match")
+
 
 def compute_match(label: str,
                   home_xg_for_s: str, away_xga_s: str,
