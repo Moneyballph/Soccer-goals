@@ -180,7 +180,7 @@ with hcol2:
     home_xg_total = st.text_input("Home xG (SEASON TOTAL)", "")
     home_xga_total = st.text_input("Home xGA (SEASON TOTAL)", "")
 with hcol3:
-    home_season_matches = st.text_input("Home Matches Played (Season total)", "")
+    home_season_matches = st.text_input("Matches Played (SEASON TOTAL)", "")
 
 # Auto-calc per-match from season totals
 home_xg_for = per_match(home_xg_total, home_season_matches)
@@ -202,11 +202,12 @@ with acol2:
     away_xg_total = st.text_input("Away xG (SEASON TOTAL)", "")
     away_xga_total = st.text_input("Away xGA (SEASON TOTAL)", "")
 with acol3:
-    away_season_matches = st.text_input("Away Matches Played (Season total)", "")
+    away_season_matches = st.text_input("Matches Played (SEASON TOTAL)", "")
 
 away_xg_for = per_match(away_xg_total, away_season_matches)
 away_xga_ag = per_match(away_xga_total, away_season_matches)
 
+# Show what the app will use
 st.caption(
     f"Away per-match: xG = {away_xg_for:.3f}  •  xGA = {away_xga_ag:.3f}"
     if (away_xg_for is not None and away_xga_ag is not None)
@@ -224,8 +225,9 @@ with ocol3:
     odds_btts = st.text_input("BTTS Odds", "+135")
 
 # Action buttons
-compute_only = st.button("Compute Only")
-compute_and_save = st.button("Compute & Save Match")
+compute_only = st.button("Compute Only", key="btn_compute_only")
+compute_and_save = st.button("Compute & Save Match", key="btn_compute_save")
+
 
 
 
