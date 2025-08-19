@@ -51,6 +51,22 @@ def roi_per_dollar(true_p: float, dec_odds: float) -> float:
 def pct(x: float) -> str:
     return f"{x*100:.2f}%"
 
+# ---- EV → Tier helper (soccer, same colors as your baseball apps) ----
+def tier_from_ev(ev_roi: float):
+    """Map EV (ROI per $1) to tier + color."""
+    if ev_roi >= 0.20:   # 20%+
+        return "Elite", "🟩"
+    if ev_roi >= 0.10:   # 10–19.99%
+        return "Strong", "🟨"
+    if ev_roi >= 0.05:   # 5–9.99%
+        return "Moderate", "🟧"
+    return "Risky", "🟥"
+
+def poisson_pmf(k: int, lam: float) -> float:
+    # Guard: lam must be finite and >= 0
+    if not np.isfinite(lam) or lam < 0:
+        return np.nan
+
 def poisson_pmf(k: int, lam: float) -> float:
     # Guard: lam must be finite and >= 0
     if not np.isfinite(lam) or lam < 0:
@@ -255,7 +271,7 @@ def compute_match(label: str,
                   home_xg_for_s: str, away_xga_s: str,
                   away_xg_for_s: str, home_xga_s: str,
                   odds_dict: Dict[str, str]):
-    # Validate numeric inputs
+    # 1) Validate numeric inputs
     fields = {
         "Home xG For": home_xg_for_s, "Away xGA Against": away_xga_s,
         "Away xG For": away_xg_for_s, "Home xGA Against": home_xga_s
@@ -268,40 +284,64 @@ def compute_match(label: str,
 
     hxf = float(home_xg_for_s)
     axga = float(away_xga_s)
-    axf = float(away_xg_for_s)
+    axf  = float(away_xg_for_s)
     hxga = float(home_xga_s)
 
-    # Simple transparent λ: scale by 1.2 baseline to keep totals realistic
+    # 2) Build lambdas (transparent, same logic as before)
     lam_home = (hxf * axga) / 1.2
     lam_away = (axf * hxga) / 1.2
 
-    # Build distribution safely
+    # 3) Poisson matrix → market probabilities
     M = safe_goal_matrix(lam_home, lam_away, max_goals=10)
     probs = market_probs_from_matrix(M)
 
-    # Parse odds (raises on invalid)
+    # 4) Parse odds (raises on invalid)
     imp15, dec15 = parse_odds(odds_dict["O1.5"])
     imp25, dec25 = parse_odds(odds_dict["O2.5"])
     impBT, decBT = parse_odds(odds_dict["BTTS"])
 
-    # Display results
     st.markdown(f"### Results for {label}")
-    for key, label_mkt, imp, dec in [
-        ("O1.5", "Over 1.5", imp15, dec15),
-        ("O2.5", "Over 2.5", imp25, dec25),
-        ("BTTS", "BTTS", impBT, decBT)
-    ]:
-        true_p = probs[key]
-        ev = roi_per_dollar(true_p, dec)
-        st.write(f"{label_mkt}: True {pct(true_p)}, Implied {pct(imp)}, EV {pct(ev)}")
 
-    # Return all details
+    # 5) Compute and display each market with Tier
+    results = []
+    markets = [
+        ("O1.5", "Over 1.5", imp15, dec15, odds_dict["O1.5"]),
+        ("O2.5", "Over 2.5", imp25, dec25, odds_dict["O2.5"]),
+        ("BTTS", "BTTS",     impBT, decBT, odds_dict["BTTS"]),
+    ]
+
+    for key, label_mkt, imp, dec, odds_str in markets:
+        true_p = probs[key]
+        ev = roi_per_dollar(true_p, dec)  # ROI per $1 (e.g., 0.1632 => 16.32%)
+        tier, badge = tier_from_ev(ev)    # <-- uses the helper you added
+        results.append({
+            "key": key, "label": label_mkt, "true": true_p, "imp": imp,
+            "ev": ev, "dec": dec, "odds_str": odds_str, "tier": tier, "badge": badge
+        })
+        st.write(
+            f"{label_mkt}: True {pct(true_p)}, Implied {pct(imp)}, EV {pct(ev)} → "
+            f"Tier: **{tier}** {badge}"
+        )
+
+    # 6) Recommended Play (highest positive EV, threshold 5%)
+    best = max(results, key=lambda r: r["ev"])
+    st.markdown("---")
+    if best["ev"] >= 0.05:
+        st.success(
+            f"**Recommended Play (straight): {best['label']}** "
+            f"({best['odds_str']}) • EV {pct(best['ev'])} • True {pct(best['true'])} • Tier: {best['tier']} {best['badge']}"
+        )
+    else:
+        st.warning("No recommended straight bet (all EV < 5%).")
+
+    # 7) Return odds parsed and lambdas so the rest of the app works the same
     odds_parsed = {
         "O1.5": {"imp": imp15, "dec": dec15, "str": odds_dict["O1.5"]},
         "O2.5": {"imp": imp25, "dec": dec25, "str": odds_dict["O2.5"]},
-        "BTTS": {"imp": impBT, "dec": decBT, "str": odds_dict["BTTS"]}
+        "BTTS": {"imp": impBT, "dec": decBT, "str": odds_dict["BTTS"]},
     }
     return probs, odds_parsed, (lam_home, lam_away)
+
 
 odds_dict = {"O1.5": odds_o15, "O2.5": odds_o25, "BTTS": odds_btts}
 label = f"{home_team} vs {away_team}"
