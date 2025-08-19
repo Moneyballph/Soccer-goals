@@ -160,7 +160,7 @@ init_state()
 # ---------------- Inputs ----------------
 st.subheader("➕ Add / Compute a Match (Season totals only)")
 
-# --- Helper to convert totals -> per match ---
+# --- Helper to convert season totals -> per match (float) ---
 def per_match(total_str, games_str):
     try:
         total = float(str(total_str).strip())
@@ -175,58 +175,68 @@ def per_match(total_str, games_str):
 st.markdown("### Home Team — Season Totals")
 hcol1, hcol2, hcol3 = st.columns(3)
 with hcol1:
-    home_team = st.text_input("Home Team", "Vélez Sarsfield")
+    home_team = st.text_input("Home Team", "Vélez Sarsfield", key="home_team_name")
 with hcol2:
-    home_xg_total = st.text_input("Home xG (SEASON TOTAL)", "")
-    home_xga_total = st.text_input("Home xGA (SEASON TOTAL)", "")
+    home_xg_total  = st.text_input("Home xG (SEASON TOTAL)",  "", key="home_xg_total")
+    home_xga_total = st.text_input("Home xGA (SEASON TOTAL)", "", key="home_xga_total")
 with hcol3:
-    home_season_matches = st.text_input("Matches Played (SEASON TOTAL)", "")
+    home_season_matches = st.text_input("Matches Played (SEASON TOTAL)", "", key="home_matches_total")
 
-# Auto-calc per-match from season totals
-home_xg_for = per_match(home_xg_total, home_season_matches)
-home_xga_ag = per_match(home_xga_total, home_season_matches)
+# Compute per-match (floats)
+_home_xg_for_val  = per_match(home_xg_total,  home_season_matches)
+_home_xga_ag_val  = per_match(home_xga_total, home_season_matches)
 
-# Show what the app will use
+# Prepare strings for downstream compute_match(...) which expects strings
+home_xg_for  = f"{_home_xg_for_val:.3f}" if _home_xg_for_val is not None else ""
+home_xga_ag  = f"{_home_xga_ag_val:.3f}" if _home_xga_ag_val is not None else ""
+
+# Show what will be used
 st.caption(
-    f"Home per-match: xG = {home_xg_for:.3f}  •  xGA = {home_xga_ag:.3f}"
-    if (home_xg_for is not None and home_xga_ag is not None)
-    else "Enter season totals + matches to compute per-match values."
+    f"Home per-match → xG = {(_home_xg_for_val or 0):.3f} • xGA = {(_home_xga_ag_val or 0):.3f}"
+    if (_home_xg_for_val is not None and _home_xga_ag_val is not None)
+    else "Enter season totals + matches to auto-compute Home per-match values."
 )
 
 # ---- AWAY TEAM (Season totals) ----
 st.markdown("### Away Team — Season Totals")
 acol1, acol2, acol3 = st.columns(3)
 with acol1:
-    away_team = st.text_input("Away Team", "Fortaleza")
+    away_team = st.text_input("Away Team", "Fortaleza", key="away_team_name")
 with acol2:
-    away_xg_total = st.text_input("Away xG (SEASON TOTAL)", "")
-    away_xga_total = st.text_input("Away xGA (SEASON TOTAL)", "")
+    away_xg_total  = st.text_input("Away xG (SEASON TOTAL)",  "", key="away_xg_total")
+    away_xga_total = st.text_input("Away xGA (SEASON TOTAL)", "", key="away_xga_total")
 with acol3:
-    away_season_matches = st.text_input("Matches Played (SEASON TOTAL)", "")
+    away_season_matches = st.text_input("Matches Played (SEASON TOTAL)", "", key="away_matches_total")
 
-away_xg_for = per_match(away_xg_total, away_season_matches)
-away_xga_ag = per_match(away_xga_total, away_season_matches)
+# Compute per-match (floats)
+_away_xg_for_val  = per_match(away_xg_total,  away_season_matches)
+_away_xga_ag_val  = per_match(away_xga_total, away_season_matches)
 
-# Show what the app will use
+# Prepare strings for downstream compute_match(...) which expects strings
+away_xg_for  = f"{_away_xg_for_val:.3f}" if _away_xg_for_val is not None else ""
+away_xga_ag  = f"{_away_xga_ag_val:.3f}" if _away_xga_ag_val is not None else ""
+
+# Show what will be used
 st.caption(
-    f"Away per-match: xG = {away_xg_for:.3f}  •  xGA = {away_xga_ag:.3f}"
-    if (away_xg_for is not None and away_xga_ag is not None)
-    else "Enter season totals + matches to compute per-match values."
+    f"Away per-match → xG = {(_away_xg_for_val or 0):.3f} • xGA = {(_away_xga_ag_val or 0):.3f}"
+    if (_away_xg_for_val is not None and _away_xga_ag_val is not None)
+    else "Enter season totals + matches to auto-compute Away per-match values."
 )
 
 # ---- ODDS INPUTS ----
 st.markdown("### Odds (American or Decimal)")
 ocol1, ocol2, ocol3 = st.columns(3)
 with ocol1:
-    odds_o15 = st.text_input("Over 1.5 Odds", "-190")
+    odds_o15  = st.text_input("Over 1.5 Odds", "-190", key="odds_o15")
 with ocol2:
-    odds_o25 = st.text_input("Over 2.5 Odds", "+160")
+    odds_o25  = st.text_input("Over 2.5 Odds", "+160", key="odds_o25")
 with ocol3:
-    odds_btts = st.text_input("BTTS Odds", "+135")
+    odds_btts = st.text_input("BTTS Odds",     "+135", key="odds_btts")
 
-# Action buttons
-compute_only = st.button("Compute Only", key="btn_compute_only")
-compute_and_save = st.button("Compute & Save Match", key="btn_compute_save")
+# Action buttons (unique keys avoid duplicate-ID errors)
+compute_only    = st.button("Compute Only",       key="btn_compute_only")
+compute_and_save= st.button("Compute & Save Match", key="btn_compute_save")
+
 
 
 
