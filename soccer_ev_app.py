@@ -173,13 +173,15 @@ def per_match(total_str, games_str):
 
 # Optional: reset inputs helper
 def reset_inputs():
-    for k in [
+    keys = [
         "home_team_name", "home_xg_total", "home_xga_total", "home_matches_total",
         "away_team_name", "away_xg_total", "away_xga_total", "away_matches_total",
-        "odds_o15", "odds_o25", "odds_btts"
-    ]:
-        if k in st.session_state:
-            st.session_state[k] = ""
+        "odds_o15", "odds_o25", "odds_btts",
+    ]
+    for k in keys:
+        st.session_state.pop(k, None)  # safely remove the key
+    st.experimental_rerun()            # force rerun with cleared fields
+
 
 # ---- HOME TEAM (Season totals) ----
 st.markdown("### Home Team — Season Totals")
