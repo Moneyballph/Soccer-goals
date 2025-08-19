@@ -287,33 +287,32 @@ def compute_match(label: str,
     axf  = float(away_xg_for_s)
     hxga = float(home_xga_s)
 
-    # 2) Build lambdas (transparent, same logic as before)
+    # 2) Lambdas (same transparent logic)
     lam_home = (hxf * axga) / 1.2
     lam_away = (axf * hxga) / 1.2
 
-    # 3) Poisson matrix → market probabilities
+    # 3) Poisson → market probabilities
     M = safe_goal_matrix(lam_home, lam_away, max_goals=10)
     probs = market_probs_from_matrix(M)
 
-    # 4) Parse odds (raises on invalid)
+    # 4) Parse odds
     imp15, dec15 = parse_odds(odds_dict["O1.5"])
     imp25, dec25 = parse_odds(odds_dict["O2.5"])
     impBT, decBT = parse_odds(odds_dict["BTTS"])
 
     st.markdown(f"### Results for {label}")
 
-    # 5) Compute and display each market with Tier
+    # 5) Compute each market, EV, and Tier (EV-based)
     results = []
     markets = [
         ("O1.5", "Over 1.5", imp15, dec15, odds_dict["O1.5"]),
         ("O2.5", "Over 2.5", imp25, dec25, odds_dict["O2.5"]),
         ("BTTS", "BTTS",     impBT, decBT, odds_dict["BTTS"]),
     ]
-
     for key, label_mkt, imp, dec, odds_str in markets:
         true_p = probs[key]
-        ev = roi_per_dollar(true_p, dec)  # ROI per $1 (e.g., 0.1632 => 16.32%)
-        tier, badge = tier_from_ev(ev)    # <-- uses the helper you added
+        ev = roi_per_dollar(true_p, dec)            # ROI per $1 (e.g., 0.1632 => 16.32%)
+        tier, badge = tier_from_ev(ev)               # EV → tier
         results.append({
             "key": key, "label": label_mkt, "true": true_p, "imp": imp,
             "ev": ev, "dec": dec, "odds_str": odds_str, "tier": tier, "badge": badge
@@ -323,24 +322,39 @@ def compute_match(label: str,
             f"Tier: **{tier}** {badge}"
         )
 
-    # 6) Recommended Play (highest positive EV, threshold 5%)
-    best = max(results, key=lambda r: r["ev"])
+    # 6) Recommendations
     st.markdown("---")
-    if best["ev"] >= 0.05:
+    # Value Play = highest EV (require EV ≥ 5%)
+    best_value = max(results, key=lambda r: r["ev"])
+    if best_value["ev"] >= 0.05:
         st.success(
-            f"**Recommended Play (straight): {best['label']}** "
-            f"({best['odds_str']}) • EV {pct(best['ev'])} • True {pct(best['true'])} • Tier: {best['tier']} {best['badge']}"
+            f"**Recommended Value Play:** {best_value['label']} "
+            f"({best_value['odds_str']}) • EV {pct(best_value['ev'])} • "
+            f"True {pct(best_value['true'])} • Tier: {best_value['tier']} {best_value['badge']}"
         )
     else:
-        st.warning("No recommended straight bet (all EV < 5%).")
+        st.warning("No value play (all EV < 5%).")
 
-    # 7) Return odds parsed and lambdas so the rest of the app works the same
+    # Safe Play = among +EV markets (EV ≥ 5%), pick highest True%
+    eligible_safe = [r for r in results if r['ev'] >= 0.05]
+    if eligible_safe:
+        best_safe = max(eligible_safe, key=lambda r: r["true"])
+        st.info(
+            f"**Recommended Safe Play:** {best_safe['label']} "
+            f"({best_safe['odds_str']}) • EV {pct(best_safe['ev'])} • "
+            f"True {pct(best_safe['true'])} • Tier: {best_safe['tier']} {best_safe['badge']}"
+        )
+    else:
+        st.info("No safe play (no market with EV ≥ 5%).")
+
+    # 7) Return odds/lambdas so the rest of the app keeps working
     odds_parsed = {
         "O1.5": {"imp": imp15, "dec": dec15, "str": odds_dict["O1.5"]},
         "O2.5": {"imp": imp25, "dec": dec25, "str": odds_dict["O2.5"]},
         "BTTS": {"imp": impBT, "dec": decBT, "str": odds_dict["BTTS"]},
     }
     return probs, odds_parsed, (lam_home, lam_away)
+
 
 
 odds_dict = {"O1.5": odds_o15, "O2.5": odds_o25, "BTTS": odds_btts}
