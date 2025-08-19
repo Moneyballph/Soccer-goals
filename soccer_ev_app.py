@@ -172,6 +172,7 @@ def per_match(total_str, games_str):
         return None
 
 # Optional: reset inputs helper
+# ---- Reset helper (safe for current Streamlit) ----
 def reset_inputs():
     keys = [
         "home_team_name", "home_xg_total", "home_xga_total", "home_matches_total",
@@ -179,8 +180,9 @@ def reset_inputs():
         "odds_o15", "odds_o25", "odds_btts",
     ]
     for k in keys:
-        st.session_state.pop(k, None)  # safely remove the key
-    st.experimental_rerun()            # force rerun with cleared fields
+        st.session_state.pop(k, None)   # remove widget state safely
+    st.rerun()                          # <— use st.rerun() on newer Streamlit
+
 
 
 # ---- HOME TEAM (Season totals) ----
@@ -253,8 +255,7 @@ with btn_cols[1]:
     compute_and_save = st.button("Compute & Save Match", key="btn_compute_save")
 with btn_cols[2]:
     if st.button("Reset Inputs", key="btn_reset_inputs"):
-        reset_inputs()
-        st.experimental_rerun()
+        reset_inputs()   # the function does st.rerun()
 
 
 
