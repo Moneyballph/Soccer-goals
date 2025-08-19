@@ -158,7 +158,7 @@ st.caption("Over 1.5 • Over 2.5 • BTTS — True % vs Implied % with EV/ROI �
 init_state()
 
 # ---------------- Inputs ----------------
-st.subheader("➕ Add / Compute a Match")
+st.subheader("➕ Add / Compute a Match (Season totals only)")
 
 # --- Helper to convert totals -> per match ---
 def per_match(total_str, games_str):
@@ -171,34 +171,47 @@ def per_match(total_str, games_str):
     except:
         return None
 
-# ---- HOME TEAM INPUTS ----
-st.markdown("### Home Team Inputs")
+# ---- HOME TEAM (Season totals) ----
+st.markdown("### Home Team — Season Totals")
 hcol1, hcol2, hcol3 = st.columns(3)
 with hcol1:
     home_team = st.text_input("Home Team", "Vélez Sarsfield")
 with hcol2:
-    home_xg_total = st.text_input("Home xG (TOTAL)", "")
-    home_xga_total = st.text_input("Home xGA (TOTAL)", "")
+    home_xg_total = st.text_input("Home xG (SEASON TOTAL)", "")
+    home_xga_total = st.text_input("Home xGA (SEASON TOTAL)", "")
 with hcol3:
-    home_games = st.text_input("Home Matches Played", "")
+    home_season_matches = st.text_input("Home Matches Played (Season total)", "")
 
-# Calculate per-match (override old variables)
-home_xg_for = per_match(home_xg_total, home_games)
-home_xga_ag = per_match(home_xga_total, home_games)
+# Auto-calc per-match from season totals
+home_xg_for = per_match(home_xg_total, home_season_matches)
+home_xga_ag = per_match(home_xga_total, home_season_matches)
 
-# ---- AWAY TEAM INPUTS ----
-st.markdown("### Away Team Inputs")
+# Show what the app will use
+st.caption(
+    f"Home per-match: xG = {home_xg_for:.3f}  •  xGA = {home_xga_ag:.3f}"
+    if (home_xg_for is not None and home_xga_ag is not None)
+    else "Enter season totals + matches to compute per-match values."
+)
+
+# ---- AWAY TEAM (Season totals) ----
+st.markdown("### Away Team — Season Totals")
 acol1, acol2, acol3 = st.columns(3)
 with acol1:
     away_team = st.text_input("Away Team", "Fortaleza")
 with acol2:
-    away_xg_total = st.text_input("Away xG (TOTAL)", "")
-    away_xga_total = st.text_input("Away xGA (TOTAL)", "")
+    away_xg_total = st.text_input("Away xG (SEASON TOTAL)", "")
+    away_xga_total = st.text_input("Away xGA (SEASON TOTAL)", "")
 with acol3:
-    away_games = st.text_input("Away Matches Played", "")
+    away_season_matches = st.text_input("Away Matches Played (Season total)", "")
 
-away_xg_for = per_match(away_xg_total, away_games)
-away_xga_ag = per_match(away_xga_total, away_games)
+away_xg_for = per_match(away_xg_total, away_season_matches)
+away_xga_ag = per_match(away_xga_total, away_season_matches)
+
+st.caption(
+    f"Away per-match: xG = {away_xg_for:.3f}  •  xGA = {away_xga_ag:.3f}"
+    if (away_xg_for is not None and away_xga_ag is not None)
+    else "Enter season totals + matches to compute per-match values."
+)
 
 # ---- ODDS INPUTS ----
 st.markdown("### Odds (American or Decimal)")
@@ -209,6 +222,11 @@ with ocol2:
     odds_o25 = st.text_input("Over 2.5 Odds", "+160")
 with ocol3:
     odds_btts = st.text_input("BTTS Odds", "+135")
+
+# Action buttons
+compute_only = st.button("Compute Only")
+compute_and_save = st.button("Compute & Save Match")
+
 
 compute_only = st.button("Compute Only")
 compute_and_save = st.button("Compute & Save Match")
