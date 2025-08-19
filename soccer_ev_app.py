@@ -160,6 +160,16 @@ init_state()
 # ---------------- Inputs ----------------
 st.subheader("➕ Add / Compute a Match (Season totals only)")
 
+# Seed used to force-clear inputs by changing widget keys
+if "reset_seed" not in st.session_state:
+    st.session_state["reset_seed"] = 0
+
+def reset_inputs():
+    st.session_state["reset_seed"] += 1   # change all widget keys
+    st.rerun()
+
+seed = st.session_state["reset_seed"]  # shorthand
+
 # --- Helper to convert season totals -> per match (float) ---
 def per_match(total_str, games_str):
     try:
@@ -171,40 +181,23 @@ def per_match(total_str, games_str):
     except:
         return None
 
-# Optional: reset inputs helper
-# ---- Reset helper (safe for current Streamlit) ----
-def reset_inputs():
-    keys = [
-        "home_team_name", "home_xg_total", "home_xga_total", "home_matches_total",
-        "away_team_name", "away_xg_total", "away_xga_total", "away_matches_total",
-        "odds_o15", "odds_o25", "odds_btts",
-    ]
-    for k in keys:
-        st.session_state.pop(k, None)   # remove widget state safely
-    st.rerun()                          # <— use st.rerun() on newer Streamlit
-
-
-
 # ---- HOME TEAM (Season totals) ----
 st.markdown("### Home Team — Season Totals")
 hcol1, hcol2, hcol3 = st.columns(3)
 with hcol1:
-    home_team = st.text_input("Home Team", value="", key="home_team_name", placeholder="Team name")
+    home_team = st.text_input("Home Team", value="", key=f"home_team_name_{seed}", placeholder="Team name")
 with hcol2:
-    home_xg_total  = st.text_input("Home xG (SEASON TOTAL)",  value="", key="home_xg_total",  placeholder="e.g., 23.1")
-    home_xga_total = st.text_input("Home xGA (SEASON TOTAL)", value="", key="home_xga_total", placeholder="e.g., 28.5")
+    home_xg_total  = st.text_input("Home xG (SEASON TOTAL)",  value="", key=f"home_xg_total_{seed}",  placeholder="e.g., 23.1")
+    home_xga_total = st.text_input("Home xGA (SEASON TOTAL)", value="", key=f"home_xga_total_{seed}", placeholder="e.g., 28.5")
 with hcol3:
-    home_season_matches = st.text_input("Matches Played (SEASON TOTAL)", value="", key="home_matches_total", placeholder="e.g., 19")
+    home_season_matches = st.text_input("Matches Played (SEASON TOTAL)", value="", key=f"home_matches_total_{seed}", placeholder="e.g., 19")
 
-# Compute per-match (floats)
+# Compute per-match (floats) and strings for compute pipeline
 _home_xg_for_val = per_match(home_xg_total, home_season_matches)
 _home_xga_ag_val = per_match(home_xga_total, home_season_matches)
-
-# Prepare strings used by compute_match(...)
 home_xg_for = f"{_home_xg_for_val:.3f}" if _home_xg_for_val is not None else ""
 home_xga_ag = f"{_home_xga_ag_val:.3f}" if _home_xga_ag_val is not None else ""
 
-# Preview per-match calc (only when both are valid)
 st.caption(
     f"Home per-match → xG = {(_home_xg_for_val or 0):.3f} • xGA = {(_home_xga_ag_val or 0):.3f}"
     if (_home_xg_for_val is not None and _home_xga_ag_val is not None)
@@ -215,22 +208,18 @@ st.caption(
 st.markdown("### Away Team — Season Totals")
 acol1, acol2, acol3 = st.columns(3)
 with acol1:
-    away_team = st.text_input("Away Team", value="", key="away_team_name", placeholder="Team name")
+    away_team = st.text_input("Away Team", value="", key=f"away_team_name_{seed}", placeholder="Team name")
 with acol2:
-    away_xg_total  = st.text_input("Away xG (SEASON TOTAL)",  value="", key="away_xg_total",  placeholder="e.g., 25.4")
-    away_xga_total = st.text_input("Away xGA (SEASON TOTAL)", value="", key="away_xga_total", placeholder="e.g., 21.9")
+    away_xg_total  = st.text_input("Away xG (SEASON TOTAL)",  value="", key=f"away_xg_total_{seed}",  placeholder="e.g., 25.4")
+    away_xga_total = st.text_input("Away xGA (SEASON TOTAL)", value="", key=f"away_xga_total_{seed}", placeholder="e.g., 21.9")
 with acol3:
-    away_season_matches = st.text_input("Matches Played (SEASON TOTAL)", value="", key="away_matches_total", placeholder="e.g., 19")
+    away_season_matches = st.text_input("Matches Played (SEASON TOTAL)", value="", key=f"away_matches_total_{seed}", placeholder="e.g., 19")
 
-# Compute per-match (floats)
 _away_xg_for_val = per_match(away_xg_total, away_season_matches)
 _away_xga_ag_val = per_match(away_xga_total, away_season_matches)
-
-# Prepare strings used by compute_match(...)
 away_xg_for = f"{_away_xg_for_val:.3f}" if _away_xg_for_val is not None else ""
 away_xga_ag = f"{_away_xga_ag_val:.3f}" if _away_xga_ag_val is not None else ""
 
-# Preview per-match calc
 st.caption(
     f"Away per-match → xG = {(_away_xg_for_val or 0):.3f} • xGA = {(_away_xga_ag_val or 0):.3f}"
     if (_away_xg_for_val is not None and _away_xga_ag_val is not None)
@@ -241,21 +230,22 @@ st.caption(
 st.markdown("### Odds (American or Decimal)")
 ocol1, ocol2, ocol3 = st.columns(3)
 with ocol1:
-    odds_o15  = st.text_input("Over 1.5 Odds", value="", key="odds_o15",  placeholder="-190 or 1.53")
+    odds_o15  = st.text_input("Over 1.5 Odds", value="", key=f"odds_o15_{seed}",  placeholder="-190 or 1.53")
 with ocol2:
-    odds_o25  = st.text_input("Over 2.5 Odds", value="", key="odds_o25",  placeholder="+160 or 2.60")
+    odds_o25  = st.text_input("Over 2.5 Odds", value="", key=f"odds_o25_{seed}",  placeholder="+160 or 2.60")
 with ocol3:
-    odds_btts = st.text_input("BTTS Odds",     value="", key="odds_btts", placeholder="+135 or 2.35")
+    odds_btts = st.text_input("BTTS Odds",     value="", key=f"odds_btts_{seed}", placeholder="+135 or 2.35")
 
 # Actions
-btn_cols = st.columns([1,1,2,2])
+btn_cols = st.columns([1,1,2])
 with btn_cols[0]:
-    compute_only = st.button("Compute Only", key="btn_compute_only")
+    compute_only = st.button("Compute Only", key=f"btn_compute_only_{seed}")
 with btn_cols[1]:
-    compute_and_save = st.button("Compute & Save Match", key="btn_compute_save")
+    compute_and_save = st.button("Compute & Save Match", key=f"btn_compute_save_{seed}")
 with btn_cols[2]:
-    if st.button("Reset Inputs", key="btn_reset_inputs"):
-        reset_inputs()   # the function does st.rerun()
+    if st.button("Reset Inputs", key=f"btn_reset_inputs_{seed}"):
+        reset_inputs()
+
 
 
 
