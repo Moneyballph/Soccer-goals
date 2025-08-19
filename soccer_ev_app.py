@@ -369,7 +369,7 @@ if compute_only or compute_and_save:
     except Exception as e:
         st.error(f"⚠️ Compute error: {e}")
 
-# ---------------- Saved Matches ----------------
+# ---------------- Saved Matches (EV-consistent tiers) ----------------
 st.markdown("---")
 st.subheader("📚 Saved Matches")
 if not st.session_state["matches"]:
@@ -377,36 +377,37 @@ if not st.session_state["matches"]:
 else:
     for match in st.session_state["matches"]:
         st.markdown(f"#### {match['label']}")
-        lam_cols = st.columns(3)
-        lam_cols[0].metric("λ Home", f"{match['lambda_home']:.2f}")
-        lam_cols[1].metric("λ Away", f"{match['lambda_away']:.2f}")
+        lam_cols = st.columns(4)
+        lam_cols[0].metric("λ Home",  f"{match['lambda_home']:.2f}")
+        lam_cols[1].metric("λ Away",  f"{match['lambda_away']:.2f}")
         lam_cols[2].metric("Total λ", f"{match['lambda_home']+match['lambda_away']:.2f}")
+        lam_cols[3].markdown("&nbsp;")
 
-        # Header
-        head = st.columns([1.2,1,1,1,1,1,1])
+        # Header row
+        head = st.columns([1.2,1,1,1,1,1])
         head[0].write("**Market**")
         head[1].write("**True %**")
         head[2].write("**Implied %**")
         head[3].write("**Edge (pp)**")
         head[4].write("**EV % (ROI/$)**")
-        head[5].write("**Tier**")
-        head[6].write("**Save**")
+        head[5].write("**Tier (by EV)**")
 
         for mkt_key, mkt_label in [("O1.5", "Over 1.5"), ("O2.5", "Over 2.5"), ("BTTS", "BTTS")]:
             true_p = match["probs"][mkt_key]
-            imp = match["odds"][mkt_key]["imp"]
-            dec = match["odds"][mkt_key]["dec"]
-            ev = roi_per_dollar(true_p, dec)
-            edge_pp = true_p - imp
-            ok, tier, _ = qualify_market(mkt_key, true_p, ev)
+            imp    = match["odds"][mkt_key]["imp"]
+            dec    = match["odds"][mkt_key]["dec"]
+            ev     = roi_per_dollar(true_p, dec)                 # same EV calc everywhere
+            edge_pp = (true_p - imp)
+            tier, badge = tier_from_ev(ev)                       # <-- EV-based tier
 
-            row = st.columns([1.2,1,1,1,1,1,1])
+            row = st.columns([1.2,1,1,1,1,1])
             row[0].write(mkt_label)
             row[1].write(pct(true_p))
             row[2].write(pct(imp))
             row[3].write(f"{edge_pp*100:.2f} pp")
             row[4].write(pct(ev))
-            row[5].write(tier)
+            row[5].write(f"**{tier}** {badge}")
+
 
             if row[6].button(f"💾 Save {mkt_label}", key=f"save_{match['id']}_{mkt_key}"):
                 bet_id = next_id()
