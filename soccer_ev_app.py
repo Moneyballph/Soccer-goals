@@ -383,22 +383,49 @@ if compute_only or compute_and_save:
     except Exception as e:
         st.error(f"⚠️ Compute error: {e}")
 
-# ---------------- Saved Matches (EV-consistent tiers + Save buttons) ----------------
+# ---------------- Saved Matches (EV-consistent tiers + Save & Delete) ----------------
 st.markdown("---")
 st.subheader("📚 Saved Matches")
+
+# Clear-all button
+top_cols = st.columns([1, 3])
+with top_cols[0]:
+    if st.button("🧹 Clear All Saved Matches", key="btn_clear_all_matches"):
+        removed_ids = {m["id"] for m in st.session_state.get("matches", [])}
+        st.session_state["matches"] = []
+        # also remove any saved bets tied to those matches
+        st.session_state["saved_bets"] = [
+            b for b in st.session_state.get("saved_bets", [])
+            if b.get("match_id") not in removed_ids
+        ]
+        st.success("Cleared all saved matches (and related saved bets).")
+        st.rerun()
+
 if not st.session_state["matches"]:
     st.info("No matches saved yet. Add one above.")
 else:
-    for match in st.session_state["matches"]:
+    for match in list(st.session_state["matches"]):  # iterate over a copy for safe deletion
         st.markdown(f"#### {match['label']}")
-        lam_cols = st.columns(4)
+        # λ + Delete row
+        lam_cols = st.columns([1, 1, 1, 1, 1.2])
         lam_cols[0].metric("λ Home",  f"{match['lambda_home']:.2f}")
         lam_cols[1].metric("λ Away",  f"{match['lambda_away']:.2f}")
         lam_cols[2].metric("Total λ", f"{match['lambda_home']+match['lambda_away']:.2f}")
         lam_cols[3].markdown("&nbsp;")
+        with lam_cols[4]:
+            if st.button("🗑️ Delete Match", key=f"btn_del_match_{match['id']}"):
+                # remove this match
+                st.session_state["matches"] = [m for m in st.session_state["matches"] if m["id"] != match["id"]]
+                # cascade delete any saved bets referencing it
+                st.session_state["saved_bets"] = [
+                    b for b in st.session_state.get("saved_bets", [])
+                    if b.get("match_id") != match["id"]
+                ]
+                st.success(f"Deleted match: {match['label']} (and related saved bets).")
+                st.rerun()
 
         # Header row (7 columns — last col is Save)
-        head = st.columns([1.2,1,1,1,1,1,1])
+        head = st.columns([1.2, 1, 1, 1, 1, 1, 1])
         head[0].write("**Market**")
         head[1].write("**True %**")
         head[2].write("**Implied %**")
@@ -411,11 +438,11 @@ else:
             true_p = match["probs"][mkt_key]
             imp    = match["odds"][mkt_key]["imp"]
             dec    = match["odds"][mkt_key]["dec"]
-            ev     = roi_per_dollar(true_p, dec)                 # EV per $1 (consistent)
+            ev     = roi_per_dollar(true_p, dec)
             edge_pp = (true_p - imp)
-            tier, badge = tier_from_ev(ev)                       # <-- EV-based tier everywhere
+            tier, badge = tier_from_ev(ev)
 
-            row = st.columns([1.2,1,1,1,1,1,1])
+            row = st.columns([1.2, 1, 1, 1, 1, 1, 1])
             row[0].write(mkt_label)
             row[1].write(pct(true_p))
             row[2].write(pct(imp))
@@ -423,7 +450,6 @@ else:
             row[4].write(pct(ev))
             row[5].write(f"**{tier}** {badge}")
 
-            # Save button in the 7th column
             if row[6].button(f"💾 Save {mkt_label}", key=f"save_{match['id']}_{mkt_key}"):
                 bet_id = next_id()
                 st.session_state["saved_bets"].append({
@@ -438,6 +464,7 @@ else:
                     "odds_str": match["odds"][mkt_key]["str"],
                 })
                 st.success(f"Saved bet: {match['label']} — {mkt_label} ({match['odds'][mkt_key]['str']})")
+
 
 
 # ---------------- Saved Bets ----------------
