@@ -467,33 +467,55 @@ else:
 
 
 
-# ---------------- Saved Bets ----------------
+# ---------------- Saved Bets (table with per-row delete) ----------------
 st.markdown("---")
-st.subheader("💾 Saved Bets (ready for Parlay Builder or straight plays)")
-if not st.session_state["saved_bets"]:
-    st.info("No bets saved yet. Save from the matches above.")
-else:
-    sb_df = pd.DataFrame([
-        {
-            "Bet ID": b["id"],
-            "Match": b["match_label"],
-            "Market": b["market_label"],
-            "True %": f"{b['true_p']*100:.2f}%",
-            "Implied %": f"{b['implied_p']*100:.2f}%",
-            "EV % (ROI/$)": f"{roi_per_dollar(b['true_p'], b['dec'])*100:.2f}%",
-            "Odds": b["odds_str"],
-        } for b in st.session_state["saved_bets"]
-    ])
-    st.dataframe(sb_df, use_container_width=True)
+st.subheader("💾 Saved Bets")
 
-    # Deletion controls
-    del_cols = st.columns([2,1,2])
-    del_id = del_cols[0].number_input("Delete Bet by Bet ID", min_value=0, value=0, step=1)
-    if del_cols[1].button("Delete Bet"):
-        before = len(st.session_state["saved_bets"])
-        st.session_state["saved_bets"] = [b for b in st.session_state["saved_bets"] if b["id"] != del_id]
-        after = len(st.session_state["saved_bets"])
-        st.success(f"Deleted Bet ID {del_id}.") if after < before else st.warning("No bet deleted (Bet ID not found).")
+bets = st.session_state.get("saved_bets", [])
+
+# Clear-all (optional)
+c_top = st.columns([1, 6])
+with c_top[0]:
+    if st.button("🧹 Clear All Saved Bets", key="btn_clear_all_bets"):
+        st.session_state["saved_bets"] = []
+        st.success("Cleared all saved bets.")
+        st.rerun()
+
+if not bets:
+    st.info("No saved bets yet.")
+else:
+    # Header
+    h = st.columns([0.6, 2.8, 1, 1, 1, 1, 0.8])
+    h[0].write("**Bet ID**")
+    h[1].write("**Match | Market**")
+    h[2].write("**True %**")
+    h[3].write("**Implied %**")
+    h[4].write("**EV % (ROI/$)**")
+    h[5].write("**Odds**")
+    h[6].write("**Delete**")
+
+    # Rows
+    for b in list(bets):
+        true_p = float(b["true_p"])
+        dec    = float(b["dec"])
+        implied_p = float(b.get("implied_p", 1.0 / dec if dec > 0 else 0.0))  # derive if missing
+        ev = roi_per_dollar(true_p, dec)
+
+        r = st.columns([0.6, 2.8, 1, 1, 1, 1, 0.8])
+        r[0].write(str(b["id"]))
+        r[1].write(f"{b['match_label']} | {b['market_label']}")
+        r[2].write(pct(true_p))
+        r[3].write(pct(implied_p))
+        r[4].write(pct(ev))
+        r[5].write(b["odds_str"])
+        with r[6]:
+            if st.button("🗑️", key=f"del_bet_{b['id']}"):
+                st.session_state["saved_bets"] = [x for x in bets if x["id"] != b["id"]]
+                st.success(f"Deleted Bet ID {b['id']}.")
+                st.rerun()
+
+
+
 
 # ---------------- N-Leg Parlay Builder (no leg limit) ----------------
 st.markdown("---")
