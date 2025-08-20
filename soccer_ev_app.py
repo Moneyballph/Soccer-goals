@@ -495,46 +495,115 @@ else:
         after = len(st.session_state["saved_bets"])
         st.success(f"Deleted Bet ID {del_id}.") if after < before else st.warning("No bet deleted (Bet ID not found).")
 
-# ---------------- 2-Leg Parlay Builder ----------------
+# ---------------- N-Leg Parlay Builder (no leg limit) ----------------
 st.markdown("---")
-st.subheader("🧮 2-Leg Parlay Builder")
-st.caption("Pick any two saved bets (ideally from different matches). Assumes independence across matches.")
+st.subheader("🎛️  Parlay Builder (any number of legs)")
 
-if len(st.session_state["saved_bets"]) < 2:
+saved = st.session_state.get("saved_bets", [])
+if len(saved) < 2:
     st.info("Save at least two bets to build a parlay.")
 else:
-    options = {f"{b['id']} | {b['match_label']} | {b['market_label']} ({b['odds_str']})": b
-               for b in st.session_state["saved_bets"]}
-    pcols = st.columns(2)
-    opt_list = list(options.keys())
-    sel1 = pcols[0].selectbox("Leg 1", opt_list, index=0, key="parlay_leg1")
-    sel2 = pcols[1].selectbox("Leg 2", opt_list, index=1, key="parlay_leg2")
+    def bet_label(b):
+        return f"{b['id']} | {b['match_label']} | {b['market_label']} ({b['odds_str']})"
 
-    b1 = options[sel1]
-    b2 = options[sel2]
+    # Pick ANY number of legs
+    legs = st.multiselect(
+        "Choose parlay legs (2+):",
+        options=saved,
+        format_func=bet_label,
+        key="parlay_legs_sel",
+    )
 
-    if b1["match_id"] == b2["match_id"]:
-        st.warning("Both legs are from the SAME match. Use different matches for a cleaner independence assumption.")
+    # Optional: encourage different matches to reduce correlation
+    enforce_diff = st.checkbox("Prefer legs from different matches (recommended)", value=True, key="parlay_diff_chk")
+    if enforce_diff and legs:
+        match_ids = [b["match_id"] for b in legs]
+        if len(match_ids) != len(set(match_ids)):
+            st.warning("You selected multiple legs from the same match. Correlation may inflate risk/variance.")
 
-    true_parlay = b1["true_p"] * b2["true_p"]
-    dec_parlay = b1["dec"] * b2["dec"]
-    imp_parlay = 1.0 / dec_parlay
-    edge_pp = true_parlay - imp_parlay
-    ev_parlay = roi_per_dollar(true_parlay, dec_parlay)
+    # Sportsbook parlay price (optional)
+    st.markdown("### Sportsbook Parlay Odds (optional)")
+    book_parlay_odds_str = st.text_input(
+        "Paste the sportsbook's parlay price (American like +475 / -140 or Decimal like 5.75)",
+        value="",
+        key="parlay_book_odds_any",
+        placeholder="+475 or 5.75",
+    )
 
-    colp = st.columns(6)
-    colp[0].metric("Parlay Decimal", f"{dec_parlay:.3f}")
-    colp[1].metric("True Parlay %", pct(true_parlay))
-    colp[2].metric("Implied Parlay %", pct(imp_parlay))
-    colp[3].metric("Edge (pp)", f"{edge_pp*100:.2f} pp")
-    colp[4].metric("EV % (ROI/$)", pct(ev_parlay))
-    colp[5].metric("Tier", "Elite" if true_parlay>=0.65 else ("Strong" if true_parlay>=0.58 else "Moderate"))
+    # Must have at least 2 legs to compute
+    if len(legs) < 2:
+        st.stop()
 
+    # Compute true parlay probability & fallback decimal
+    from math import prod
+
+    try:
+        p_trues = [float(b["true_p"]) for b in legs]
+        decs    = [float(b["dec"])    for b in legs]
+    except Exception:
+        st.error("Saved bet data malformed. Try removing and saving the bet again.")
+        st.stop()
+
+    true_parlay = prod(p_trues)
+    fallback_dec = prod(decs)
+
+    # Use sportsbook price if provided; else fallback to product of decimals
+    using_book_price = False
+    dec_parlay = None
+    imp_parlay = None
+    if book_parlay_odds_str.strip():
+        try:
+            imp_parlay, dec_parlay = parse_odds(book_parlay_odds_str.strip())
+            using_book_price = True
+        except Exception:
+            st.warning("Could not parse sportsbook parlay odds. Falling back to product of leg decimals.")
+    if dec_parlay is None:
+        dec_parlay = fallback_dec
+        imp_parlay = 1.0 / dec_parlay if dec_parlay > 0 else 0.0
+
+    # Metrics
+    implied_parlay = imp_parlay
+    edge_pp = (true_parlay - implied_parlay)         # percentage points (0.4898 - 0.5159)
+    ev_parlay = roi_per_dollar(true_parlay, dec_parlay)  # ROI per $1
+    tier, badge = tier_from_ev(ev_parlay)
+
+    # Display summary
+    g1, g2, g3, g4, g5, g6 = st.columns(6)
+    g1.metric("# Legs", f"{len(legs)}")
+    g2.metric("Parlay Decimal (used)", f"{dec_parlay:.3f}")
+    g3.metric("True Parlay %", f"{true_parlay*100:.2f}%")
+    g4.metric("Implied Parlay %", f"{implied_parlay*100:.2f}%")
+    g5.metric("Edge (pp)", f"{edge_pp*100:.2f} pp")
+    g6.metric("EV % (ROI/$)", f"{ev_parlay*100:.2f}%")
+    st.write(f"Tier (by EV): **{tier}** {badge}")
+    st.caption(
+        "Price source: " +
+        ("**Sportsbook parlay odds** entered above." if using_book_price
+         else "Fallback = product of the leg decimal odds.")
+    )
+
+    # Show selected legs for clarity
+    st.markdown("**Legs in this Parlay**")
+    leg_cols = st.columns([0.5, 3, 1, 1, 1])
+    leg_cols[0].write("**ID**")
+    leg_cols[1].write("**Match | Market**")
+    leg_cols[2].write("**True %**")
+    leg_cols[3].write("**Implied % (leg)**")
+    leg_cols[4].write("**Odds**")
+    for b in legs:
+        c = st.columns([0.5, 3, 1, 1, 1])
+        c[0].write(str(b["id"]))
+        c[1].write(f"{b['match_label']} — {b['market_label']}")
+        c[2].write(pct(float(b["true_p"])))
+        c[3].write(pct(float(b["implied_p"])) if "implied_p" in b else "—")
+        c[4].write(b["odds_str"])
+
+    # Copy-ready tracker row
     st.markdown("**Copy-ready Tracker Row**")
+    joined = "  +  ".join([f"{b['id']} | {b['match_label']} | {b['market_label']} ({b['odds_str']})" for b in legs])
     st.code(
-        f"{b1['match_label']} — {b1['market_label']} ({b1['odds_str']})  +  "
-        f"{b2['match_label']} — {b2['market_label']} ({b2['odds_str']}) | "
-        f"True {pct(true_parlay)} | Implied {pct(imp_parlay)} | EV {pct(ev_parlay)} | Edge {edge_pp*100:.2f} pp",
-        language="text"
+        f"{joined}  |  True {true_parlay*100:.2f}%  |  Implied {implied_parlay*100:.2f}%  |  "
+        f"EV {ev_parlay*100:.2f}%  |  Edge {edge_pp*100:.2f} pp",
+        language="text",
     )
 
