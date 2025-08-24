@@ -1,8 +1,8 @@
 
 # soccer_ev_app.py
-# Moneyball Phil — Soccer EV App (v3.1)
-# Full app: Compute Only + Compute & Save, Multi-match, Saved Bets, 2-Leg Parlay Builder
-# Markets: Over 1.5, Over 2.5, BTTS — True % vs Implied %, EV (ROI per $), with NaN/input guards
+# Moneyball Phil — Soccer EV App (v3.2)
+# Markets: Over 1.5, Over 2.5, BTTS — True % vs Implied %, EV (ROI per $)
+# Workflow: Compute Only / Compute & Save, Saved Matches, Saved Bets, N-Leg Parlay
 
 import math
 from typing import Dict, Tuple
@@ -49,7 +49,10 @@ def roi_per_dollar(true_p: float, dec_odds: float) -> float:
     return true_p * (dec_odds - 1.0) - (1.0 - true_p)
 
 def pct(x: float) -> str:
-    return f"{x*100:.2f}%"
+    try:
+        return f"{float(x)*100:.2f}%"
+    except Exception:
+        return "—"
 
 # ---- Tiers driven by True Probability (market-specific cutoffs) ----
 def tier_from_true(true_p: float, market_key: str) -> tuple[str, str]:
@@ -84,17 +87,19 @@ def tier_from_true(true_p: float, market_key: str) -> tuple[str, str]:
         ],
     }
 
-    # Default to O2.5 thresholds if key not found
     for cutoff, name, icon in thresholds.get(market_key, thresholds["O2.5"]):
         if true_p >= cutoff:
             return name, icon
     return "Risky", "🔴"
 
-
-def poisson_pmf(k: int, lam: float) -> float:
-    # Guard: lam must be finite and >= 0
-    if not np.isfinite(lam) or lam < 0:
-        return np.nan
+# (Optional) simple EV-tier just for parlay summary (clearly labeled as EV-based)
+def tier_from_ev_simple(ev_roi: float):
+    if ev_roi is None:
+        return "—", "⚪"
+    if ev_roi >= 0.20:   return "Elite", "🟩"
+    if ev_roi >= 0.10:   return "Strong", "🟨"
+    if ev_roi >= 0.05:   return "Moderate", "🟧"
+    return "Risky", "🟥"
 
 def poisson_pmf(k: int, lam: float) -> float:
     # Guard: lam must be finite and >= 0
@@ -150,13 +155,12 @@ def is_num(x) -> bool:
         return False
 
 # =========================
-# ---- Qualification -------
+# ---- Qualification ------
 # =========================
-
+# (kept for your reference; not used for tier colors now)
 def qualify_market(market_key: str, true_p: float, ev_roi: float):
     """
-    Returns (qualified, tier, reason). Tiers by true%:
-      Elite ≥80%, Strong ≥70%, Moderate ≥60%, else Risky
+    Returns (qualified, tier, reason). Tiers here are descriptive only.
     Gates:
       O1.5: true≥75% and EV≥+5%
       O2.5: true≥60% and EV≥+10%
@@ -198,8 +202,8 @@ def next_id():
 # =========================
 
 st.set_page_config(page_title="Moneyball Phil — Soccer EV", layout="wide")
-st.title("⚽ Moneyball Phil — Soccer EV App (v3.1)")
-st.caption("Over 1.5 • Over 2.5 • BTTS — True % vs Implied % with EV/ROI • Multi-match • Saved Bets • 2-Leg Parlay Builder")
+st.title("⚽ Moneyball Phil — Soccer EV App (v3.2)")
+st.caption("Over 1.5 • Over 2.5 • BTTS — True % vs Implied % with EV/ROI • Multi-match • Saved Bets • N-Leg Parlay")
 init_state()
 
 # ---------------- Inputs ----------------
@@ -281,7 +285,7 @@ with ocol2:
 with ocol3:
     odds_btts = st.text_input("BTTS Odds",     value="", key=f"odds_btts_{seed}", placeholder="+135 or 2.35")
 
-# Actions
+# ---- Actions ----
 btn_cols = st.columns([1,1,2])
 with btn_cols[0]:
     compute_only = st.button("Compute Only", key=f"btn_compute_only_{seed}")
@@ -291,10 +295,9 @@ with btn_cols[2]:
     if st.button("Reset Inputs", key=f"btn_reset_inputs_{seed}"):
         reset_inputs()
 
-
-
-
-
+# =========================
+# ------ Compute Core -----
+# =========================
 
 def compute_match(label: str,
                   home_xg_for_s: str, away_xga_s: str,
@@ -316,9 +319,10 @@ def compute_match(label: str,
     axf  = float(away_xg_for_s)
     hxga = float(home_xga_s)
 
-    # 2) Lambdas (same transparent logic)
-    lam_home = (hxf * axga) / 1.2
-    lam_away = (axf * hxga) / 1.2
+    # 2) Lambdas (transparent logic)
+    DEF_FACTOR = 1.2
+    lam_home = (hxf * axga) / DEF_FACTOR
+    lam_away = (axf * hxga) / DEF_FACTOR
 
     # 3) Poisson → market probabilities
     M = safe_goal_matrix(lam_home, lam_away, max_goals=10)
@@ -331,7 +335,7 @@ def compute_match(label: str,
 
     st.markdown(f"### Results for {label}")
 
-    # 5) Compute each market, EV, and Tier (EV-based)
+    # 5) Compute each market, EV, and Tier (TRUE%-based tiers)
     results = []
     markets = [
         ("O1.5", "Over 1.5", imp15, dec15, odds_dict["O1.5"]),
@@ -340,15 +344,15 @@ def compute_match(label: str,
     ]
     for key, label_mkt, imp, dec, odds_str in markets:
         true_p = probs[key]
-        ev = roi_per_dollar(true_p, dec)            # ROI per $1 (e.g., 0.1632 => 16.32%)
-        tier, badge = tier_from_ev(ev)               # EV → tier
+        ev = roi_per_dollar(true_p, dec)  # ROI per $1
+        tier, badge = tier_from_true(true_p, key)  # <<< tier by TRUE %, not EV
         results.append({
             "key": key, "label": label_mkt, "true": true_p, "imp": imp,
             "ev": ev, "dec": dec, "odds_str": odds_str, "tier": tier, "badge": badge
         })
         st.write(
             f"{label_mkt}: True {pct(true_p)}, Implied {pct(imp)}, EV {pct(ev)} → "
-            f"Tier: **{tier}** {badge}"
+            f"Tier (by True %): **{tier}** {badge}"
         )
 
     # 6) Recommendations
@@ -357,9 +361,9 @@ def compute_match(label: str,
     best_value = max(results, key=lambda r: r["ev"])
     if best_value["ev"] >= 0.05:
         st.success(
-            f"**Recommended Value Play:** {best_value['label']} "
+            f"**Recommended Value Play (by EV):** {best_value['label']} "
             f"({best_value['odds_str']}) • EV {pct(best_value['ev'])} • "
-            f"True {pct(best_value['true'])} • Tier: {best_value['tier']} {best_value['badge']}"
+            f"True {pct(best_value['true'])} • Tier (True %): {best_value['tier']} {best_value['badge']}"
         )
     else:
         st.warning("No value play (all EV < 5%).")
@@ -369,9 +373,9 @@ def compute_match(label: str,
     if eligible_safe:
         best_safe = max(eligible_safe, key=lambda r: r["true"])
         st.info(
-            f"**Recommended Safe Play:** {best_safe['label']} "
+            f"**Recommended Safe Play (highest True% among +EV):** {best_safe['label']} "
             f"({best_safe['odds_str']}) • EV {pct(best_safe['ev'])} • "
-            f"True {pct(best_safe['true'])} • Tier: {best_safe['tier']} {best_safe['badge']}"
+            f"True {pct(best_safe['true'])} • Tier (True %): {best_safe['tier']} {best_safe['badge']}"
         )
     else:
         st.info("No safe play (no market with EV ≥ 5%).")
@@ -384,8 +388,7 @@ def compute_match(label: str,
     }
     return probs, odds_parsed, (lam_home, lam_away)
 
-
-
+# Run compute
 odds_dict = {"O1.5": odds_o15, "O2.5": odds_o25, "BTTS": odds_btts}
 label = f"{home_team} vs {away_team}"
 
@@ -412,7 +415,7 @@ if compute_only or compute_and_save:
     except Exception as e:
         st.error(f"⚠️ Compute error: {e}")
 
-# ---------------- Saved Matches (EV-consistent tiers + Save & Delete) ----------------
+# ---------------- Saved Matches (True%-based tiers + Save & Delete) ----------------
 st.markdown("---")
 st.subheader("📚 Saved Matches")
 
@@ -460,7 +463,7 @@ else:
         head[2].write("**Implied %**")
         head[3].write("**Edge (pp)**")
         head[4].write("**EV % (ROI/$)**")
-        head[5].write("**Tier (by EV)**")
+        head[5].write("**Tier (by True %)**")   # updated label
         head[6].write("**Save**")
 
         for mkt_key, mkt_label in [("O1.5", "Over 1.5"), ("O2.5", "Over 2.5"), ("BTTS", "BTTS")]:
@@ -469,7 +472,7 @@ else:
             dec    = match["odds"][mkt_key]["dec"]
             ev     = roi_per_dollar(true_p, dec)
             edge_pp = (true_p - imp)
-            tier, badge = tier_from_ev(ev)
+            tier, badge = tier_from_true(true_p, mkt_key)  # True%-based tier
 
             row = st.columns([1.2, 1, 1, 1, 1, 1, 1])
             row[0].write(mkt_label)
@@ -494,8 +497,6 @@ else:
                 })
                 st.success(f"Saved bet: {match['label']} — {mkt_label} ({match['odds'][mkt_key]['str']})")
 
-
-
 # ---------------- Saved Bets (table with per-row delete) ----------------
 st.markdown("---")
 st.subheader("💾 Saved Bets")
@@ -514,37 +515,45 @@ if not bets:
     st.info("No saved bets yet.")
 else:
     # Header
-    h = st.columns([0.6, 2.8, 1, 1, 1, 1, 0.8])
+    h = st.columns([0.6, 2.8, 1, 1, 1, 1, 1.2, 0.8])
     h[0].write("**Bet ID**")
     h[1].write("**Match | Market**")
     h[2].write("**True %**")
     h[3].write("**Implied %**")
     h[4].write("**EV % (ROI/$)**")
     h[5].write("**Odds**")
-    h[6].write("**Delete**")
+    h[6].write("**Tier (True %)**")
+    h[7].write("**Delete**")
 
     # Rows
     for b in list(bets):
-        true_p = float(b["true_p"])
-        dec    = float(b["dec"])
+        try:
+            true_p = float(b["true_p"])
+            dec    = float(b["dec"])
+        except Exception:
+            continue
         implied_p = float(b.get("implied_p", 1.0 / dec if dec > 0 else 0.0))  # derive if missing
         ev = roi_per_dollar(true_p, dec)
 
-        r = st.columns([0.6, 2.8, 1, 1, 1, 1, 0.8])
+        r = st.columns([0.6, 2.8, 1, 1, 1, 1, 1.2, 0.8])
         r[0].write(str(b["id"]))
         r[1].write(f"{b['match_label']} | {b['market_label']}")
         r[2].write(pct(true_p))
         r[3].write(pct(implied_p))
         r[4].write(pct(ev))
         r[5].write(b["odds_str"])
-        with r[6]:
+
+        # Determine market key from label for tier mapping
+        label_m = b.get("market_label","")
+        mkey = "O1.5" if "1.5" in label_m else ("O2.5" if "2.5" in label_m else ("BTTS" if "BTTS" in label_m.upper() else "O2.5"))
+        tname, ticon = tier_from_true(true_p, mkey)
+        r[6].write(f"**{tname}** {ticon}")
+
+        with r[7]:
             if st.button("🗑️", key=f"del_bet_{b['id']}"):
                 st.session_state["saved_bets"] = [x for x in bets if x["id"] != b["id"]]
                 st.success(f"Deleted Bet ID {b['id']}.")
                 st.rerun()
-
-
-
 
 # ---------------- N-Leg Parlay Builder (no leg limit) ----------------
 st.markdown("---")
@@ -582,79 +591,76 @@ else:
     )
 
     # Must have at least 2 legs to compute
-    if len(legs) < 2:
-        st.stop()
+    if len(legs) >= 2:
+        from math import prod
 
-    # Compute true parlay probability & fallback decimal
-    from math import prod
-
-    try:
-        p_trues = [float(b["true_p"]) for b in legs]
-        decs    = [float(b["dec"])    for b in legs]
-    except Exception:
-        st.error("Saved bet data malformed. Try removing and saving the bet again.")
-        st.stop()
-
-    true_parlay = prod(p_trues)
-    fallback_dec = prod(decs)
-
-    # Use sportsbook price if provided; else fallback to product of decimals
-    using_book_price = False
-    dec_parlay = None
-    imp_parlay = None
-    if book_parlay_odds_str.strip():
         try:
-            imp_parlay, dec_parlay = parse_odds(book_parlay_odds_str.strip())
-            using_book_price = True
+            p_trues = [float(b["true_p"]) for b in legs]
+            decs    = [float(b["dec"])    for b in legs]
         except Exception:
-            st.warning("Could not parse sportsbook parlay odds. Falling back to product of leg decimals.")
-    if dec_parlay is None:
-        dec_parlay = fallback_dec
-        imp_parlay = 1.0 / dec_parlay if dec_parlay > 0 else 0.0
+            st.error("Saved bet data malformed. Try removing and saving the bet again.")
+            st.stop()
 
-    # Metrics
-    implied_parlay = imp_parlay
-    edge_pp = (true_parlay - implied_parlay)         # percentage points (0.4898 - 0.5159)
-    ev_parlay = roi_per_dollar(true_parlay, dec_parlay)  # ROI per $1
-    tier, badge = tier_from_ev(ev_parlay)
+        true_parlay = prod(p_trues)
+        fallback_dec = prod(decs)
 
-    # Display summary
-    g1, g2, g3, g4, g5, g6 = st.columns(6)
-    g1.metric("# Legs", f"{len(legs)}")
-    g2.metric("Parlay Decimal (used)", f"{dec_parlay:.3f}")
-    g3.metric("True Parlay %", f"{true_parlay*100:.2f}%")
-    g4.metric("Implied Parlay %", f"{implied_parlay*100:.2f}%")
-    g5.metric("Edge (pp)", f"{edge_pp*100:.2f} pp")
-    g6.metric("EV % (ROI/$)", f"{ev_parlay*100:.2f}%")
-    st.write(f"Tier (by EV): **{tier}** {badge}")
-    st.caption(
-        "Price source: " +
-        ("**Sportsbook parlay odds** entered above." if using_book_price
-         else "Fallback = product of the leg decimal odds.")
-    )
+        # Use sportsbook price if provided; else fallback to product of decimals
+        using_book_price = False
+        dec_parlay = None
+        imp_parlay = None
+        if book_parlay_odds_str.strip():
+            try:
+                imp_parlay, dec_parlay = parse_odds(book_parlay_odds_str.strip())
+                using_book_price = True
+            except Exception:
+                st.warning("Could not parse sportsbook parlay odds. Falling back to product of leg decimals.")
+        if dec_parlay is None:
+            dec_parlay = fallback_dec
+            imp_parlay = 1.0 / dec_parlay if dec_parlay > 0 else 0.0
 
-    # Show selected legs for clarity
-    st.markdown("**Legs in this Parlay**")
-    leg_cols = st.columns([0.5, 3, 1, 1, 1])
-    leg_cols[0].write("**ID**")
-    leg_cols[1].write("**Match | Market**")
-    leg_cols[2].write("**True %**")
-    leg_cols[3].write("**Implied % (leg)**")
-    leg_cols[4].write("**Odds**")
-    for b in legs:
-        c = st.columns([0.5, 3, 1, 1, 1])
-        c[0].write(str(b["id"]))
-        c[1].write(f"{b['match_label']} — {b['market_label']}")
-        c[2].write(pct(float(b["true_p"])))
-        c[3].write(pct(float(b["implied_p"])) if "implied_p" in b else "—")
-        c[4].write(b["odds_str"])
+        # Metrics
+        implied_parlay = imp_parlay
+        edge_pp = (true_parlay - implied_parlay)
+        ev_parlay = roi_per_dollar(true_parlay, dec_parlay)  # ROI per $1
+        p_tier, p_badge = tier_from_ev_simple(ev_parlay)     # clearly EV-based for parlay summary
 
-    # Copy-ready tracker row
-    st.markdown("**Copy-ready Tracker Row**")
-    joined = "  +  ".join([f"{b['id']} | {b['match_label']} | {b['market_label']} ({b['odds_str']})" for b in legs])
-    st.code(
-        f"{joined}  |  True {true_parlay*100:.2f}%  |  Implied {implied_parlay*100:.2f}%  |  "
-        f"EV {ev_parlay*100:.2f}%  |  Edge {edge_pp*100:.2f} pp",
-        language="text",
-    )
+        # Display summary
+        g1, g2, g3, g4, g5, g6 = st.columns(6)
+        g1.metric("# Legs", f"{len(legs)}")
+        g2.metric("Parlay Decimal (used)", f"{dec_parlay:.3f}")
+        g3.metric("True Parlay %", f"{true_parlay*100:.2f}%")
+        g4.metric("Implied Parlay %", f"{implied_parlay*100:.2f}%")
+        g5.metric("Edge (pp)", f"{edge_pp*100:.2f} pp")
+        g6.metric("EV % (ROI/$)", f"{ev_parlay*100:.2f}%")
+        st.write(f"Parlay Tier (by EV): **{p_tier}** {p_badge}")
+        st.caption(
+            "Price source: " +
+            ("**Sportsbook parlay odds** entered above." if using_book_price
+             else "Fallback = product of the leg decimal odds.")
+        )
+
+        # Show selected legs for clarity
+        st.markdown("**Legs in this Parlay**")
+        leg_cols = st.columns([0.5, 3, 1, 1, 1])
+        leg_cols[0].write("**ID**")
+        leg_cols[1].write("**Match | Market**")
+        leg_cols[2].write("**True %**")
+        leg_cols[3].write("**Implied % (leg)**")
+        leg_cols[4].write("**Odds**")
+        for b in legs:
+            c = st.columns([0.5, 3, 1, 1, 1])
+            c[0].write(str(b["id"]))
+            c[1].write(f"{b['match_label']} — {b['market_label']}")
+            c[2].write(pct(float(b["true_p"])))
+            c[3].write(pct(float(b.get("implied_p", 1.0/float(b['dec']) if float(b['dec'])>0 else 0.0))))
+            c[4].write(b["odds_str"])
+
+        # Copy-ready tracker row
+        st.markdown("**Copy-ready Tracker Row**")
+        joined = "  +  ".join([f"{b['id']} | {b['match_label']} | {b['market_label']} ({b['odds_str']})" for b in legs])
+        st.code(
+            f"{joined}  |  True {true_parlay*100:.2f}%  |  Implied {implied_parlay*100:.2f}%  |  "
+            f"EV {ev_parlay*100:.2f}%  |  Edge {edge_pp*100:.2f} pp",
+            language="text",
+        )
 
