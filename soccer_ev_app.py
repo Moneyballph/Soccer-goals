@@ -51,16 +51,45 @@ def roi_per_dollar(true_p: float, dec_odds: float) -> float:
 def pct(x: float) -> str:
     return f"{x*100:.2f}%"
 
-# ---- EV → Tier helper (soccer, same colors as your baseball apps) ----
-def tier_from_ev(ev_roi: float):
-    """Map EV (ROI per $1) to tier + color."""
-    if ev_roi >= 0.20:   # 20%+
-        return "Elite", "🟩"
-    if ev_roi >= 0.10:   # 10–19.99%
-        return "Strong", "🟨"
-    if ev_roi >= 0.05:   # 5–9.99%
-        return "Moderate", "🟧"
-    return "Risky", "🟥"
+# ---- Tiers driven by True Probability (market-specific cutoffs) ----
+def tier_from_true(true_p: float, market_key: str) -> tuple[str, str]:
+    """
+    Returns (tier_name, emoji) based on TRUE probability, not EV.
+    Cutoffs are tuned per market so the colors feel intuitive.
+    """
+    if true_p is None:
+        return "—", "⚪"
+
+    thresholds = {
+        # Over 1.5 is usually high-prob, so "Elite" feels like a layup
+        "O1.5": [
+            (0.75, "Elite",    "🟢"),
+            (0.65, "Strong",   "🟡"),
+            (0.55, "Moderate", "🟠"),
+            (0.00, "Risky",    "🔴"),
+        ],
+        # Over 2.5 often sits around a coin flip
+        "O2.5": [
+            (0.60, "Elite",    "🟢"),
+            (0.50, "Strong",   "🟡"),
+            (0.45, "Moderate", "🟠"),
+            (0.00, "Risky",    "🔴"),
+        ],
+        # BTTS typical book ranges ~48–55%
+        "BTTS": [
+            (0.58, "Elite",    "🟢"),
+            (0.52, "Strong",   "🟡"),
+            (0.47, "Moderate", "🟠"),
+            (0.00, "Risky",    "🔴"),
+        ],
+    }
+
+    # Default to O2.5 thresholds if key not found
+    for cutoff, name, icon in thresholds.get(market_key, thresholds["O2.5"]):
+        if true_p >= cutoff:
+            return name, icon
+    return "Risky", "🔴"
+
 
 def poisson_pmf(k: int, lam: float) -> float:
     # Guard: lam must be finite and >= 0
